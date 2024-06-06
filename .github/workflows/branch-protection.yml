@@ -1,9 +1,8 @@
 name: Require PRs for Specific Files
 
 on:
-  push:
-    branches:
-      - master
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
   check-files:
