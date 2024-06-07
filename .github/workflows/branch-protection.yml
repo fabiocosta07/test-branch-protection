@@ -1,29 +1,62 @@
-name: Require PRs for Specific Files
+
+Copiar código
+name: PR Workflow
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
-  check-files:
+  check-restricted-files:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2 # Fetch the last two commits to ensure we have HEAD and HEAD~1
+    - name: Checkout code
+      uses: actions/checkout@v2
 
-      - name: Check for specific files
-        run: |
-          # List of files or directories that should require PRs
-          REQUIRED_PR_FILES=(
-            "test.txt"
-          )
+    - name: Check for restricted files changes
+      id: check-files
+      run: |
+        pr_number=$(echo ${{ github.event.number }})
+        echo "PR Number: $pr_number"
 
-          for file in "${REQUIRED_PR_FILES[@]}"; do
-            if git diff --name-only HEAD~1 HEAD | grep -q "$file"; then
-              echo "Direct commits to $file are not allowed. Please use a pull request."
-              exit 1
-            fi
-          done
+        modified_files=$(curl -s -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/$pr_number/files" | jq -r '.[].filename')
+
+        restricted_files=("test.txt")  # Add your restricted files here
+        for file in "${restricted_files[@]}"; do
+          if echo "$modified_files" | grep -q "$file"; then
+            echo "Restricted file $file was modified."
+            echo "::set-output name=restricted::true"
+            exit 0
+          fi
+        done
+        echo "::set-output name=restricted::false"
+
+  check-code-owner-approval:
+    needs: check-restricted-files
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Check for code owner approval
+      if: steps.check-files.outputs.restricted == 'true'
+      id: check-approval
+      run: |
+        pr_number=$(echo ${{ github.event.number }})
+        echo "PR Number: $pr_number"
+
+        approvals=$(curl -s -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/$pr_number/reviews" | \
+          jq '[.[] | select(.state == "APPROVED") | .user.login] | unique | length')
+
+        echo "Number of approvals: $approvals"
+
+        if [ "$approvals" -lt 1 ]; then
+          echo "At least one code owner approval is required."
+          exit 1
+        fi
