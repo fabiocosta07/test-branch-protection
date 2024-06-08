@@ -30,16 +30,18 @@ jobs:
           for file in "${restricted_files[@]}"; do
             if echo "$modified_files" | grep -q "$file"; then
               echo "Restricted file $file was modified."
-              restricted=true
               echo "restricted=true" >> "$GITHUB_ENV"
               break
             fi
           done
 
       - name: Check for code owner approval
-        if: env.restricted == 'true'
         id: check-approval
         run: |
+          if [ "$env.restricted" != 'true' ]; then
+            echo "No restricted files were modified. Skipping code owner approval check."
+            exit 0
+          fi
           pr_number=${{ github.event.number }}
           echo "PR Number: $pr_number"
 
