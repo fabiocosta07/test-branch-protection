@@ -10,7 +10,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Check for restricted files changes
         id: check-files
@@ -31,22 +31,13 @@ jobs:
             if echo "$modified_files" | grep -q "$file"; then
               echo "Restricted file $file was modified."
               restricted=true
+              echo "restricted=true" >> "$GITHUB_ENV"
               break
             fi
           done
 
-          echo "::set-output name=restricted::$restricted"
-
-  check-code-owner-approval:
-    needs: check-restricted-files
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
       - name: Check for code owner approval
-        if: steps.check-files.outputs.restricted == 'true'
+        if: env.restricted == 'true'
         id: check-approval
         run: |
           pr_number=${{ github.event.number }}
@@ -59,7 +50,7 @@ jobs:
 
           echo "Number of approvals: $approvals"
 
-          if [ "$approvals" -lt 3 ]; then
+          if [ "$approvals" -lt 1 ]; then
             echo "At least one code owner approval is required."
             exit 1
           fi
