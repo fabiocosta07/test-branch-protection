@@ -38,6 +38,7 @@ jobs:
       - name: Check for code owner approval
         id: check-approval
         run: |
+          echo "Restricted: $env.restricted"
           if [ "$env.restricted" != "true" ]; then
             echo "No restricted files were modified. Skipping code owner approval check."
             exit 0
