@@ -59,7 +59,7 @@ jobs:
 
           echo "Number of approvals: $approvals"
 
-          if [ "$approvals" -lt 1 ]; then
+          if [ "$approvals" -lt 3 ]; then
             echo "At least one code owner approval is required."
             exit 1
           fi
