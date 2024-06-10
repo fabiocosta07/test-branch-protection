@@ -8,6 +8,7 @@ on:
 
 jobs:
   check-restricted-files:
+    if: github.event.pull_request.base.ref == 'master'
     runs-on: ubuntu-latest
 
     steps:
