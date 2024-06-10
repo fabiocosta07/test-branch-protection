@@ -3,9 +3,12 @@ name: PR Workflow
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
   check-restricted-files:
+    if: github.event.pull_request.base.ref == 'master'
     runs-on: ubuntu-latest
 
     steps:
@@ -30,27 +33,52 @@ jobs:
           for file in "${restricted_files[@]}"; do
             if echo "$modified_files" | grep -q "$file"; then
               echo "Restricted file $file was modified."
-              restricted=true
               echo "restricted=true" >> "$GITHUB_ENV"
               break
             fi
           done
 
       - name: Check for code owner approval
-        if: env.restricted == 'true'
         id: check-approval
         run: |
-          pr_number=${{ github.event.number }}
-          echo "PR Number: $pr_number"
+          echo "Restricted: $restricted"
+          if [ "$restricted" != "true" ]; then
+            echo "No restricted files were modified. Skipping code owner approval check."
+            exit 0
+          fi
 
-          approvals=$(curl -s -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/pulls/$pr_number/reviews" | \
-            jq '[.[] | select(.state == "APPROVED") | .user.login] | unique | length')
+          # Fetch the PR details
+          PR_NUMBER=$(jq --raw-output .number "$GITHUB_EVENT_PATH")
+          REPO_FULL_NAME=$(jq --raw-output .repository.full_name "$GITHUB_EVENT_PATH")
 
-          echo "Number of approvals: $approvals"
+          # Fetch the reviews
+          REVIEWS=$(curl -s -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
+            "https://api.github.com/repos/$REPO_FULL_NAME/pulls/$PR_NUMBER/reviews")
 
-          if [ "$approvals" -lt 1 ]; then
-            echo "At least one code owner approval is required."
+          # Initialize the approval count
+          APPROVAL_COUNT=0
+
+          # Fetch the CODEOWNERS file
+          CODEOWNERS_CONTENT=$(curl -s -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
+            "https://api.github.com/repos/$REPO_FULL_NAME/contents/.github/CODEOWNERS")
+
+          CODEOWNERS=$(echo "$CODEOWNERS_CONTENT" | jq -r '.content' | base64 --decode | grep -v '^#' | awk '{print $NF}')
+
+          # Check if at least two code owners have approved the PR
+          for review in $(echo "$REVIEWS" | jq -r '.[] | @base64'); do
+            _jq() {
+              echo ${review} | base64 --decode | jq -r ${1}
+            }
+
+            REVIEWER=$(_jq '.user.login')
+            if [[ $(_jq '.state') == "APPROVED" ]] && echo "$CODEOWNERS" | grep -qw "$REVIEWER"; then
+              APPROVAL_COUNT=$((APPROVAL_COUNT + 1))
+            fi
+          done
+
+          echo "Number of code owner approvals: $APPROVAL_COUNT"
+
+          if [ "$APPROVAL_COUNT" -lt 1 ]; then
+            echo "PR must be approved by at least two code owners"
             exit 1
           fi
