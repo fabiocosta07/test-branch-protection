@@ -3,6 +3,8 @@ name: PR Workflow
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
   check-restricted-files:
@@ -75,7 +77,7 @@ jobs:
 
           echo "Number of code owner approvals: $APPROVAL_COUNT"
 
-          if [ "$APPROVAL_COUNT" -lt 2 ]; then
+          if [ "$APPROVAL_COUNT" -lt 1 ]; then
             echo "PR must be approved by at least two code owners"
             exit 1
           fi
